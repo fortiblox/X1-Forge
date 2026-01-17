@@ -2,14 +2,16 @@
 
 **Efficient Voting Validator for X1 Blockchain**
 
-X1-Forge is a stripped-down, optimized validator designed for voting and earning staking rewards on lower-spec hardware.
+X1-Forge is a stripped-down voting validator that earns staking rewards on lower-spec hardware (64GB RAM). It removes unnecessary features like MEV, Geyser plugins, and full RPC API.
 
-## Features
+## What Does X1-Forge Do?
 
-- **Lightweight**: Runs on 64GB RAM (vs 128GB+ for full validators)
-- **Voting-focused**: Stripped of RPC, Geyser, MEV for efficiency
-- **Turnkey**: One-command install with auto-tuning
-- **Easy upgrades**: Track x1labs releases with simple update command
+- Votes on blocks and participates in consensus
+- Earns staking rewards
+- Runs efficiently on 64GB RAM systems
+- Stripped of: MEV, Geyser, full RPC API
+
+**Don't want to stake?** Use [X1-Aether](https://github.com/fortiblox/X1-Aether) for verification-only mode.
 
 ## Requirements
 
@@ -17,7 +19,7 @@ X1-Forge is a stripped-down, optimized validator designed for voting and earning
 |-----------|---------|-------------|
 | CPU | 8 cores | 16 cores |
 | RAM | 64 GB | 128 GB |
-| Storage | 500 GB NVMe | 1 TB NVMe |
+| Storage | 400 GB NVMe | 1 TB NVMe |
 | Network | 100 Mbps | 1 Gbps |
 | OS | Ubuntu 22.04+ | Ubuntu 24.04 |
 
@@ -27,132 +29,74 @@ X1-Forge is a stripped-down, optimized validator designed for voting and earning
 curl -sSfL https://raw.githubusercontent.com/fortiblox/X1-Forge/main/install.sh | bash
 ```
 
-## What Gets Installed
+The installer will:
+1. Install Rust and dependencies
+2. Build from Tachyon source (x1-labs/tachyon)
+3. Generate identity and vote account keypairs
+4. Apply kernel optimizations
+5. Configure stripped-down systemd service
 
-- Tachyon validator binary (optimized build)
-- Systemd service (`x1-forge.service`)
-- Auto-tuned configuration for your hardware
-- Keypair generation (identity + vote account)
-- Snapshot download automation
+## After Installation
+
+1. **Fund your identity wallet** with XNT for vote transaction fees
+2. **Create vote account on-chain**:
+   ```bash
+   solana create-vote-account ~/.config/x1-forge/vote.json \
+     ~/.config/x1-forge/identity.json <WITHDRAWER_PUBKEY> \
+     --commission 10 --url https://rpc.mainnet.x1.xyz
+   ```
+3. **Start the validator**: `sudo systemctl start x1-forge`
 
 ## Commands
 
 ```bash
+# Start validator
+sudo systemctl start x1-forge
+
 # Check status
-sudo systemctl status x1-forge
+x1-forge status
 
 # View logs
-journalctl -u x1-forge -f
+x1-forge logs
 
-# Check for updates
-x1-forge update --check
-
-# Perform upgrade
-x1-forge update
-
-# Rollback if needed
-x1-forge rollback
+# Check sync progress
+x1-forge catchup
 
 # Health check
 x1-forge health
 ```
 
-## Configuration
+## What's Stripped
 
-Config file: `~/.config/x1-forge/config.toml`
-
-```toml
-[network]
-cluster = "mainnet"
-
-[paths]
-ledger = "/mnt/x1-forge/ledger"
-identity = "~/.config/solana/forge-identity.json"
-vote_account = "~/.config/solana/forge-vote.json"
-
-[performance]
-# Auto-tuned based on your hardware
-ledger_size = 10000000
-snapshot_interval = 10000
-```
-
-## Directory Structure
-
-```
-~/.config/x1-forge/
-├── config.toml          # Main configuration
-├── forge-identity.json  # Validator identity keypair
-└── forge-vote.json      # Vote account keypair
-
-/mnt/x1-forge/
-└── ledger/              # Blockchain data
-```
-
-## Comparison: X1-Forge vs Full Validator
+Compared to a full validator, X1-Forge removes:
 
 | Feature | Full Validator | X1-Forge |
 |---------|---------------|----------|
-| RAM Required | 128-256 GB | 64 GB |
-| Disk Required | 2 TB+ | 500 GB |
-| Full RPC API | Yes | No (health only) |
-| Geyser Plugins | Yes | No |
-| MEV Extraction | Yes | No |
-| Voting | Yes | Yes |
-| Staking Rewards | Yes | Yes |
+| MEV/Jito | Yes | **No** |
+| Geyser Plugins | Yes | **No** |
+| Full RPC API | Yes | **No** |
+| Transaction History | Yes | **No** |
+| Extended Metadata | Yes | **No** |
 
-## Upgrading
+This reduces RAM usage from 128GB+ to ~64GB.
 
-X1-Forge tracks upstream x1labs/tachyon releases:
+## Comparison: X1-Forge vs X1-Aether
 
-```bash
-# Check available updates
-x1-forge update --check
+| Feature | X1-Forge | X1-Aether |
+|---------|----------|-----------|
+| Purpose | Vote & earn rewards | Verify chain only |
+| RAM Required | 64 GB | 8 GB |
+| Earns Rewards | Yes | No |
+| Votes | Yes | No |
 
-# Upgrade (with automatic backup)
-x1-forge update
+## Keypair Backup
 
-# Rollback if issues
-x1-forge rollback
-```
+**Critical**: Back up your keypairs after installation:
+- `~/.config/x1-forge/identity.json`
+- `~/.config/x1-forge/vote.json`
 
-## Troubleshooting
-
-### Validator not voting
-```bash
-# Check health
-x1-forge health
-
-# Check logs for errors
-journalctl -u x1-forge -n 100 --no-pager
-```
-
-### Low memory
-```bash
-# Check memory usage
-free -h
-
-# Restart with fresh state
-sudo systemctl restart x1-forge
-```
-
-### Sync issues
-```bash
-# Check slot progress
-x1-forge status
-
-# Re-download snapshot if needed
-x1-forge snapshot --download
-```
-
-## Support
-
-- Issues: https://github.com/fortiblox/X1-Forge/issues
-- X1 Discord: https://discord.gg/x1blockchain
+Loss of these files means loss of your validator identity and vote account.
 
 ## License
 
 Apache 2.0
-
-## Credits
-
-Based on [x1labs/tachyon](https://github.com/x1-labs/tachyon), optimized for efficient voting.
