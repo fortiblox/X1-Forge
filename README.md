@@ -1,10 +1,14 @@
 # X1-Forge
 
-**Efficient Voting Validator for X1 Blockchain**
+**The Backbone of the X1 Network**
 
-X1-Forge runs a stripped-down Tachyon validator that votes on blocks and earns staking rewards. Optimized for 64GB RAM systems by removing MEV, Geyser plugins, and full RPC API.
+A forge is where raw materials become something greater—where heat, pressure, and skill combine to create strength. X1-Forge validators are the backbone of the X1 network: actively participating in consensus, casting votes, and earning rewards for securing the chain.
 
-**Not looking to stake?** Use [X1-Aether](https://github.com/fortiblox/X1-Aether) for verification-only mode (8GB RAM).
+While [X1-Aether](https://github.com/fortiblox/X1-Aether) nodes silently observe, Forge validators step into the fire. They don't just verify—they *decide*. Every vote they cast helps the network reach consensus and move forward.
+
+X1-Forge runs an optimized Tachyon validator stripped of MEV, Geyser plugins, and full RPC overhead—purpose-built for validators who want to stake, vote, and earn.
+
+**Just want to verify without staking?** Use [X1-Aether](https://github.com/fortiblox/X1-Aether) for lightweight verification (8GB RAM).
 
 ## Requirements
 
@@ -183,14 +187,17 @@ solana delegate-stake stake.json <YOUR_VOTE_PUBKEY> --url https://rpc.mainnet.x1
 
 ---
 
-## Comparison: X1-Forge vs X1-Aether
+## Forge vs Aether: Choose Your Role
 
-| Feature | X1-Forge | X1-Aether |
+| | X1-Forge | X1-Aether |
 |---------|----------|-----------|
-| Purpose | Vote & earn rewards | Verify chain only |
-| RAM | 64 GB | 8 GB |
-| Earns Rewards | Yes | No |
-| Votes | Yes | No |
+| **Role** | Active Validator | Silent Observer |
+| **Purpose** | Vote on blocks & earn rewards | Verify the chain independently |
+| **RAM Required** | 64 GB | 8 GB |
+| **Earns Rewards** | Yes | No |
+| **Participates in Consensus** | Yes | No |
+
+*Forge decides. Aether watches. Both strengthen the network.*
 
 ## License
 
