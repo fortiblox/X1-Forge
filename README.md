@@ -31,13 +31,15 @@ curl -sSfL https://raw.githubusercontent.com/fortiblox/X1-Forge/main/install.sh 
 ```
 
 The installer will:
-1. Check system meets requirements
+1. Check system meets requirements (RAM, CPU, disk)
 2. Install dependencies (build tools, Rust, Solana CLI)
-3. Build Tachyon validator from source (~15-30 minutes)
-4. Generate identity and vote keypair files
-5. Apply kernel optimizations
-6. Install systemd service
-7. Create the `x1-forge` CLI wrapper
+3. Generate or import identity and vote keypairs
+4. Guide you through funding and vote account creation
+5. Optionally set validator branding (name, website, icon)
+6. Build Tachyon validator from source (~15-30 minutes)
+7. Configure firewall ports automatically
+8. Apply kernel optimizations
+9. Optionally install as systemd service
 
 **File locations:**
 - Binary: `/opt/x1-forge/bin/x1-forge`
@@ -126,6 +128,17 @@ x1-forge health     # Health check
 | `x1-forge logs` | Follow logs |
 | `x1-forge catchup` | Show sync progress |
 | `x1-forge health` | Health check |
+| `x1-forge-config` | Open configuration menu |
+
+## Configuration
+
+After installation, run `x1-forge-config` to access the configuration menu:
+
+- **Wallet Management** — View, import, or generate identity/vote keypairs
+- **Validator Identity** — Set name, website, and icon URL (published on-chain)
+- **Auto-Start** — Toggle automatic startup on boot
+- **Auto-Update** — Enable daily automatic updates from the repository
+- **Rebuild Binary** — Recompile from latest source
 
 Enable auto-start on boot:
 ```bash
