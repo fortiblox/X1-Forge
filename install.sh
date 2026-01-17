@@ -13,6 +13,7 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 BOLD='\033[1m'
+DIM='\033[2m'
 NC='\033[0m'
 
 # Configuration
@@ -40,9 +41,9 @@ KNOWN_VALIDATORS=(
 
 # Logging
 log_info() { echo -e "${BLUE}[INFO]${NC} $1"; }
-log_success() { echo -e "${GREEN}[✓]${NC} $1"; }
-log_warn() { echo -e "${YELLOW}[!]${NC} $1"; }
-log_error() { echo -e "${RED}[✗]${NC} $1"; }
+log_success() { echo -e "${GREEN}[PASS]${NC} $1"; }
+log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
+log_error() { echo -e "${RED}[FAIL]${NC} $1"; }
 log_step() { echo -e "\n${CYAN}${BOLD}══════════════════════════════════════════════════════════════${NC}"; echo -e "${CYAN}${BOLD}  STEP $1: $2${NC}"; echo -e "${CYAN}${BOLD}══════════════════════════════════════════════════════════════${NC}\n"; }
 
 print_banner() {
@@ -60,12 +61,50 @@ print_banner() {
     echo ""
 }
 
+print_overview() {
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${BOLD}What This Script Will Do:${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+    echo "  1. Check system requirements (RAM, CPU, disk space)"
+    echo "  2. Install build tools, Rust, and Solana CLI"
+    echo "  3. Generate or import your validator keypairs"
+    echo "  4. Wait for you to fund your identity wallet"
+    echo "  5. Create your vote account on-chain"
+    echo "  6. Build the validator from source (compiles Tachyon)"
+    echo "  7. Configure firewall ports (8000-8020, 8899)"
+    echo "  8. Install systemd service for auto-start"
+    echo ""
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${BOLD}What You'll Need:${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+    echo "  - sudo/root access"
+    echo "  - Stable internet connection"
+    echo "  - XNT tokens to fund your identity wallet (~0.5 XNT minimum)"
+    echo "  - A secure wallet address for withdrawer (optional but recommended)"
+    echo "  - 15-30 minutes for compilation"
+    echo ""
+    echo -e "${DIM}  Optional: Existing keypair files if migrating from another server${NC}"
+    echo ""
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${BOLD}Minimum Requirements:${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+    echo "  - 64 GB RAM (128 GB recommended)"
+    echo "  - 8 CPU cores (16 recommended)"
+    echo "  - 400 GB NVMe storage (1 TB recommended)"
+    echo "  - 100 Mbps network (1 Gbps recommended)"
+    echo "  - Ports 8000-8020, 8899 open"
+    echo ""
+}
+
 # ═══════════════════════════════════════════════════════════════
 # STEP 1: System Requirements Check
 # ═══════════════════════════════════════════════════════════════
 
 check_requirements() {
-    log_step "1/6" "Checking System Requirements"
+    log_step "1/7" "Checking System Requirements"
 
     OS=$(uname -s)
     ARCH=$(uname -m)
@@ -129,6 +168,16 @@ check_requirements() {
         errors=$((errors + 1))
     fi
 
+    # Port check
+    if command -v ss &>/dev/null; then
+        if ss -tuln | grep -q ':8899 '; then
+            log_warn "Port 8899 already in use"
+            warnings=$((warnings + 1))
+        else
+            log_success "Port 8899: Available"
+        fi
+    fi
+
     # Summary
     echo ""
     if [[ $errors -gt 0 ]]; then
@@ -154,7 +203,7 @@ check_requirements() {
 # ═══════════════════════════════════════════════════════════════
 
 install_dependencies() {
-    log_step "2/6" "Installing Dependencies"
+    log_step "2/7" "Installing Dependencies"
 
     echo "Installing build tools and libraries..."
     echo ""
@@ -163,11 +212,11 @@ install_dependencies() {
         sudo apt-get update -qq
         sudo apt-get install -y -qq \
             build-essential pkg-config libssl-dev libudev-dev \
-            libclang-dev protobuf-compiler curl wget git jq zstd
+            libclang-dev protobuf-compiler curl wget git jq zstd bc
     elif command -v yum &>/dev/null; then
         sudo yum install -y -q \
             gcc gcc-c++ make pkgconfig openssl-devel systemd-devel \
-            clang protobuf-compiler curl wget git jq zstd
+            clang protobuf-compiler curl wget git jq zstd bc
     fi
     log_success "System dependencies installed"
 
@@ -200,7 +249,7 @@ install_dependencies() {
 # ═══════════════════════════════════════════════════════════════
 
 setup_wallets() {
-    log_step "3/6" "Wallet Setup"
+    log_step "3/7" "Wallet Setup"
 
     mkdir -p "$CONFIG_DIR"
 
@@ -312,6 +361,7 @@ import_existing_wallets() {
 import_from_files() {
     echo ""
     read -p "Path to identity keypair JSON: " identity_source
+    identity_source="${identity_source/#\~/$HOME}"
     if [[ -f "$identity_source" ]]; then
         cp "$identity_source" "$IDENTITY_PATH"
         chmod 600 "$IDENTITY_PATH"
@@ -322,6 +372,7 @@ import_from_files() {
     fi
 
     read -p "Path to vote account keypair JSON: " vote_source
+    vote_source="${vote_source/#\~/$HOME}"
     if [[ -f "$vote_source" ]]; then
         cp "$vote_source" "$VOTE_PATH"
         chmod 600 "$VOTE_PATH"
@@ -367,7 +418,7 @@ import_from_bytes() {
 # ═══════════════════════════════════════════════════════════════
 
 fund_identity() {
-    log_step "4/6" "Fund Identity Wallet"
+    log_step "4/7" "Fund Identity Wallet"
 
     IDENTITY_PUBKEY=$(solana-keygen pubkey "$IDENTITY_PATH")
 
@@ -417,7 +468,7 @@ fund_identity() {
 # ═══════════════════════════════════════════════════════════════
 
 create_vote_account() {
-    log_step "5/6" "Create Vote Account On-Chain"
+    log_step "5/7" "Create Vote Account On-Chain"
 
     IDENTITY_PUBKEY=$(solana-keygen pubkey "$IDENTITY_PATH")
     VOTE_PUBKEY=$(solana-keygen pubkey "$VOTE_PATH")
@@ -485,7 +536,7 @@ create_vote_account() {
 # ═══════════════════════════════════════════════════════════════
 
 build_and_install() {
-    log_step "6/6" "Build and Install Validator"
+    log_step "6/7" "Build and Install Validator"
 
     # Create directories
     sudo mkdir -p "$INSTALL_DIR"/{bin,lib,backups}
@@ -622,6 +673,63 @@ EOF
 }
 
 # ═══════════════════════════════════════════════════════════════
+# STEP 7: Configure Firewall
+# ═══════════════════════════════════════════════════════════════
+
+configure_firewall() {
+    log_step "7/7" "Configuring Firewall"
+
+    log_info "Opening required ports..."
+    echo ""
+    echo "Required ports:"
+    echo "  - 8000-8020 (UDP/TCP): Gossip and data transfer"
+    echo "  - 8899 (TCP): RPC"
+    echo ""
+
+    # Detect and configure firewall
+    if command -v ufw &>/dev/null && sudo ufw status | grep -q "Status: active"; then
+        log_info "Detected UFW firewall, configuring..."
+        sudo ufw allow 8000:8020/tcp >/dev/null 2>&1
+        sudo ufw allow 8000:8020/udp >/dev/null 2>&1
+        sudo ufw allow 8899/tcp >/dev/null 2>&1
+        log_success "UFW rules added"
+
+    elif command -v firewall-cmd &>/dev/null && systemctl is-active --quiet firewalld; then
+        log_info "Detected firewalld, configuring..."
+        sudo firewall-cmd --permanent --add-port=8000-8020/tcp >/dev/null 2>&1
+        sudo firewall-cmd --permanent --add-port=8000-8020/udp >/dev/null 2>&1
+        sudo firewall-cmd --permanent --add-port=8899/tcp >/dev/null 2>&1
+        sudo firewall-cmd --reload >/dev/null 2>&1
+        log_success "Firewalld rules added"
+
+    elif command -v iptables &>/dev/null; then
+        log_info "Configuring iptables..."
+        sudo iptables -A INPUT -p tcp --dport 8000:8020 -j ACCEPT 2>/dev/null || true
+        sudo iptables -A INPUT -p udp --dport 8000:8020 -j ACCEPT 2>/dev/null || true
+        sudo iptables -A INPUT -p tcp --dport 8899 -j ACCEPT 2>/dev/null || true
+
+        # Try to save rules
+        if command -v netfilter-persistent &>/dev/null; then
+            sudo netfilter-persistent save >/dev/null 2>&1 || true
+        elif [[ -f /etc/sysconfig/iptables ]]; then
+            sudo service iptables save >/dev/null 2>&1 || true
+        fi
+        log_success "iptables rules added"
+    else
+        log_warn "No firewall detected or firewall inactive"
+        echo ""
+        echo -e "${YELLOW}Please manually open these ports if you have a firewall:${NC}"
+        echo "  - 8000-8020/tcp and 8000-8020/udp"
+        echo "  - 8899/tcp"
+    fi
+
+    # Cloud provider note
+    echo ""
+    echo -e "${DIM}Note: If running on a cloud provider (AWS, GCP, Azure, etc.),${NC}"
+    echo -e "${DIM}also configure the security group/firewall rules in your provider's console.${NC}"
+}
+
+# ═══════════════════════════════════════════════════════════════
 # Completion
 # ═══════════════════════════════════════════════════════════════
 
@@ -660,10 +768,8 @@ print_completion() {
 
 main() {
     print_banner
+    print_overview
 
-    echo "This installer will guide you through setting up an X1-Forge"
-    echo "voting validator on your system."
-    echo ""
     read -p "Ready to begin? (Y/n): " -n 1 -r
     echo
     if [[ $REPLY =~ ^[Nn]$ ]]; then
@@ -677,6 +783,7 @@ main() {
     fund_identity
     create_vote_account
     build_and_install
+    configure_firewall
     print_completion
 }
 
