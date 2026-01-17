@@ -1333,6 +1333,8 @@ main() {
     fi
 
     # Ensure we can read from terminal even when piped
+    # Save original stdin and redirect to terminal
+    exec 3<&0
     exec < /dev/tty
 
     print_banner
@@ -1354,6 +1356,10 @@ main() {
     configure_firewall
     setup_service
     print_completion
+
+    # Restore original stdin before exiting
+    exec <&3
+    exec 3<&-
 }
 
 main "$@"
