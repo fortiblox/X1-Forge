@@ -144,8 +144,12 @@ show_config_menu() {
         echo "  5) Reconfigure Firewall"
         echo "  6) View Validator Info"
         echo "  7) Rebuild Validator Binary"
+        echo -e "  8) ${RED}Uninstall X1-Forge${NC}"
         echo ""
         echo "  0) Exit"
+        echo ""
+        echo -e "${DIM}You are responsible for securing your private keys.${NC}"
+        echo -e "${DIM}We do not store or manage your keys.${NC}"
         echo ""
         read -p "Select option: " config_choice
 
@@ -157,6 +161,7 @@ show_config_menu() {
             5) configure_firewall; read -p "Press Enter to continue..." ;;
             6) show_validator_info; read -p "Press Enter to continue..." ;;
             7) rebuild_binary; read -p "Press Enter to continue..." ;;
+            8) uninstall_forge ;;
             0) exit 0 ;;
             *) ;;
         esac
@@ -551,6 +556,68 @@ rebuild_binary() {
         sudo systemctl start x1-forge
         log_success "Service started"
     fi
+}
+
+uninstall_forge() {
+    clear
+    echo ""
+    echo -e "${RED}${BOLD}╔═══════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${RED}${BOLD}║   UNINSTALL X1-FORGE                                          ║${NC}"
+    echo -e "${RED}${BOLD}╚═══════════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    echo -e "${YELLOW}This will completely remove X1-Forge from your system.${NC}"
+    echo ""
+    echo "The following will be deleted:"
+    echo "  - Service: x1-forge.service"
+    echo "  - Binary: /opt/x1-forge/"
+    echo "  - Data: /mnt/x1-forge/"
+    echo "  - CLI tools: /usr/local/bin/x1-forge*"
+    echo ""
+    echo -e "${CYAN}Your keypair files will NOT be deleted:${NC}"
+    echo "  ~/.config/x1-forge/identity.json"
+    echo "  ~/.config/x1-forge/vote.json"
+    echo ""
+    echo -e "${RED}${BOLD}This action cannot be undone!${NC}"
+    echo ""
+    read -p "Type 'UNINSTALL' to confirm: " confirm
+
+    if [[ "$confirm" != "UNINSTALL" ]]; then
+        echo "Cancelled."
+        read -p "Press Enter to continue..."
+        return
+    fi
+
+    echo ""
+    log_info "Stopping service..."
+    sudo systemctl stop x1-forge 2>/dev/null || true
+    sudo systemctl disable x1-forge 2>/dev/null || true
+
+    log_info "Removing service file..."
+    sudo rm -f /etc/systemd/system/x1-forge.service
+    sudo systemctl daemon-reload
+
+    log_info "Removing binary and data..."
+    sudo rm -rf /opt/x1-forge
+    sudo rm -rf /mnt/x1-forge
+
+    log_info "Removing CLI tools..."
+    sudo rm -f /usr/local/bin/x1-forge
+    sudo rm -f /usr/local/bin/x1-forge-config
+
+    log_info "Removing cron jobs..."
+    (crontab -l 2>/dev/null | grep -v "x1-forge") | crontab - 2>/dev/null || true
+
+    echo ""
+    log_success "X1-Forge has been uninstalled."
+    echo ""
+    echo -e "${CYAN}Your keypair files were preserved at:${NC}"
+    echo "  ~/.config/x1-forge/identity.json"
+    echo "  ~/.config/x1-forge/vote.json"
+    echo ""
+    echo -e "${DIM}To remove them: rm -rf ~/.config/x1-forge${NC}"
+    echo ""
+    read -p "Press Enter to exit..."
+    exit 0
 }
 
 # ═══════════════════════════════════════════════════════════════
@@ -1187,6 +1254,11 @@ print_completion() {
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
     echo -e "${YELLOW}To start your validator now:  x1-forge start${NC}"
+    echo ""
+    echo -e "${DIM}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${DIM}You are solely responsible for securing your private keys.${NC}"
+    echo -e "${DIM}We do not store, manage, or have access to your keys.${NC}"
+    echo -e "${DIM}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
 }
 
