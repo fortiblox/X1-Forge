@@ -6,7 +6,7 @@ A forge is where raw materials become something greater—where heat, pressure, 
 
 While [X1-Aether](https://github.com/fortiblox/X1-Aether) nodes silently observe, Forge validators step into the fire. They don't just verify—they *decide*. Every vote they cast helps the network reach consensus and move forward.
 
-X1-Forge runs an optimized Tachyon validator stripped of MEV, Geyser plugins, and full RPC overhead—purpose-built for validators who want to stake, vote, and earn.
+X1-Forge runs a streamlined Tachyon validator—stripped down and optimized for one purpose: stake, vote, and earn.
 
 **Just want to verify without staking?** Use [X1-Aether](https://github.com/fortiblox/X1-Aether) for lightweight verification (8GB RAM).
 
@@ -176,16 +176,9 @@ sudo systemctl start x1-forge
 
 ---
 
-## What's Stripped
+## Optimized for Validators
 
-| Feature | Full Validator | X1-Forge |
-|---------|---------------|----------|
-| MEV/Jito | Yes | **No** |
-| Geyser Plugins | Yes | **No** |
-| Full RPC API | Yes | **No** |
-| Transaction History | Yes | **No** |
-
-This reduces RAM from 128GB+ to ~64GB.
+X1-Forge strips away unnecessary overhead to focus purely on validation. This reduces RAM requirements from 128GB+ to ~64GB while maintaining full voting capability.
 
 ---
 
