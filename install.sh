@@ -1,8 +1,11 @@
 #!/bin/bash
-# X1-Forge Installer
+# X1-Forge Installer & Configuration Tool
 # Efficient Voting Validator for X1 Blockchain
 #
-# Usage: curl -sSfL https://raw.githubusercontent.com/fortiblox/X1-Forge/main/install.sh | bash
+# Usage:
+#   curl -sSfL https://raw.githubusercontent.com/fortiblox/X1-Forge/main/install.sh | bash
+#   x1-forge-config          # After installation, use this for configuration
+#   install.sh --config      # Or run installer with --config flag
 
 set -e
 
@@ -24,6 +27,7 @@ CONFIG_DIR="$HOME/.config/x1-forge"
 DATA_DIR="/mnt/x1-forge"
 BIN_DIR="/usr/local/bin"
 RPC_URL="https://rpc.mainnet.x1.xyz"
+SETTINGS_FILE="$CONFIG_DIR/settings.conf"
 
 # X1 Mainnet Configuration
 ENTRYPOINTS=(
@@ -45,6 +49,513 @@ log_success() { echo -e "${GREEN}[PASS]${NC} $1"; }
 log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 log_error() { echo -e "${RED}[FAIL]${NC} $1"; }
 log_step() { echo -e "\n${CYAN}${BOLD}══════════════════════════════════════════════════════════════${NC}"; echo -e "${CYAN}${BOLD}  STEP $1: $2${NC}"; echo -e "${CYAN}${BOLD}══════════════════════════════════════════════════════════════${NC}\n"; }
+
+# ═══════════════════════════════════════════════════════════════
+# Settings Management
+# ═══════════════════════════════════════════════════════════════
+
+load_settings() {
+    # Defaults
+    AUTOSTART_ENABLED="true"
+    AUTOUPDATE_ENABLED="false"
+    VALIDATOR_NAME=""
+    VALIDATOR_WEBSITE=""
+    VALIDATOR_ICON=""
+
+    if [[ -f "$SETTINGS_FILE" ]]; then
+        source "$SETTINGS_FILE"
+    fi
+}
+
+save_settings() {
+    mkdir -p "$CONFIG_DIR"
+    cat > "$SETTINGS_FILE" << EOF
+# X1-Forge Settings
+AUTOSTART_ENABLED="$AUTOSTART_ENABLED"
+AUTOUPDATE_ENABLED="$AUTOUPDATE_ENABLED"
+VALIDATOR_NAME="$VALIDATOR_NAME"
+VALIDATOR_WEBSITE="$VALIDATOR_WEBSITE"
+VALIDATOR_ICON="$VALIDATOR_ICON"
+EOF
+}
+
+# ═══════════════════════════════════════════════════════════════
+# Configuration Menu (Post-Install)
+# ═══════════════════════════════════════════════════════════════
+
+show_config_menu() {
+    load_settings
+
+    while true; do
+        clear
+        echo ""
+        echo -e "${BLUE}╔═══════════════════════════════════════════════════════════════╗${NC}"
+        echo -e "${BLUE}║${NC}   ${GREEN}${BOLD}X1-Forge Configuration${NC}                                    ${BLUE}║${NC}"
+        echo -e "${BLUE}╚═══════════════════════════════════════════════════════════════╝${NC}"
+        echo ""
+
+        # Show current status
+        if [[ -f "$CONFIG_DIR/identity.json" ]]; then
+            IDENTITY_PUBKEY=$(solana-keygen pubkey "$CONFIG_DIR/identity.json" 2>/dev/null || echo "invalid")
+            echo -e "  Identity: ${GREEN}$IDENTITY_PUBKEY${NC}"
+        else
+            echo -e "  Identity: ${RED}Not configured${NC}"
+        fi
+
+        if [[ -f "$CONFIG_DIR/vote.json" ]]; then
+            VOTE_PUBKEY=$(solana-keygen pubkey "$CONFIG_DIR/vote.json" 2>/dev/null || echo "invalid")
+            echo -e "  Vote Account: ${GREEN}$VOTE_PUBKEY${NC}"
+        else
+            echo -e "  Vote Account: ${RED}Not configured${NC}"
+        fi
+
+        if systemctl is-enabled x1-forge &>/dev/null; then
+            echo -e "  Auto-start: ${GREEN}Enabled${NC}"
+        else
+            echo -e "  Auto-start: ${YELLOW}Disabled${NC}"
+        fi
+
+        if [[ "$AUTOUPDATE_ENABLED" == "true" ]]; then
+            echo -e "  Auto-update: ${GREEN}Enabled${NC}"
+        else
+            echo -e "  Auto-update: ${YELLOW}Disabled${NC}"
+        fi
+
+        if systemctl is-active x1-forge &>/dev/null; then
+            echo -e "  Service: ${GREEN}Running${NC}"
+        else
+            echo -e "  Service: ${YELLOW}Stopped${NC}"
+        fi
+
+        # Show validator name if set
+        if [[ -n "$VALIDATOR_NAME" ]]; then
+            echo -e "  Validator Name: ${GREEN}$VALIDATOR_NAME${NC}"
+        else
+            echo -e "  Validator Name: ${DIM}Not set${NC}"
+        fi
+
+        echo ""
+        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo ""
+        echo "  1) Wallet Management"
+        echo "  2) Validator Identity (name, website, icon)"
+        echo "  3) Toggle Auto-Start on Boot"
+        echo "  4) Toggle Auto-Update"
+        echo "  5) Reconfigure Firewall"
+        echo "  6) View Validator Info"
+        echo "  7) Rebuild Validator Binary"
+        echo ""
+        echo "  0) Exit"
+        echo ""
+        read -p "Select option: " config_choice
+
+        case $config_choice in
+            1) wallet_menu ;;
+            2) validator_identity_menu ;;
+            3) toggle_autostart ;;
+            4) toggle_autoupdate ;;
+            5) configure_firewall; read -p "Press Enter to continue..." ;;
+            6) show_validator_info; read -p "Press Enter to continue..." ;;
+            7) rebuild_binary; read -p "Press Enter to continue..." ;;
+            0) exit 0 ;;
+            *) ;;
+        esac
+    done
+}
+
+wallet_menu() {
+    while true; do
+        clear
+        echo ""
+        echo -e "${BOLD}Wallet Management${NC}"
+        echo ""
+
+        if [[ -f "$CONFIG_DIR/identity.json" ]]; then
+            echo -e "  Current Identity: $(solana-keygen pubkey $CONFIG_DIR/identity.json 2>/dev/null)"
+        fi
+        if [[ -f "$CONFIG_DIR/vote.json" ]]; then
+            echo -e "  Current Vote: $(solana-keygen pubkey $CONFIG_DIR/vote.json 2>/dev/null)"
+        fi
+
+        echo ""
+        echo "  1) View wallet public keys"
+        echo "  2) Check wallet balances"
+        echo "  3) Import identity from file"
+        echo "  4) Import vote account from file"
+        echo "  5) Generate new identity (backup first!)"
+        echo "  6) Generate new vote account (backup first!)"
+        echo ""
+        echo "  0) Back"
+        echo ""
+        read -p "Select option: " wallet_choice
+
+        case $wallet_choice in
+            1)
+                echo ""
+                echo "Identity: $(solana-keygen pubkey $CONFIG_DIR/identity.json 2>/dev/null || echo 'Not found')"
+                echo "Vote: $(solana-keygen pubkey $CONFIG_DIR/vote.json 2>/dev/null || echo 'Not found')"
+                read -p "Press Enter to continue..."
+                ;;
+            2)
+                echo ""
+                echo "Checking balances..."
+                if [[ -f "$CONFIG_DIR/identity.json" ]]; then
+                    BALANCE=$(solana balance "$CONFIG_DIR/identity.json" --url $RPC_URL 2>/dev/null || echo "Error")
+                    echo "Identity balance: $BALANCE"
+                fi
+                read -p "Press Enter to continue..."
+                ;;
+            3)
+                echo ""
+                read -p "Path to identity.json: " import_path
+                import_path="${import_path/#\~/$HOME}"
+                if [[ -f "$import_path" ]] && solana-keygen pubkey "$import_path" &>/dev/null; then
+                    cp "$import_path" "$CONFIG_DIR/identity.json"
+                    chmod 600 "$CONFIG_DIR/identity.json"
+                    log_success "Identity imported"
+                else
+                    log_error "Invalid file"
+                fi
+                read -p "Press Enter to continue..."
+                ;;
+            4)
+                echo ""
+                read -p "Path to vote.json: " import_path
+                import_path="${import_path/#\~/$HOME}"
+                if [[ -f "$import_path" ]] && solana-keygen pubkey "$import_path" &>/dev/null; then
+                    cp "$import_path" "$CONFIG_DIR/vote.json"
+                    chmod 600 "$CONFIG_DIR/vote.json"
+                    log_success "Vote account imported"
+                else
+                    log_error "Invalid file"
+                fi
+                read -p "Press Enter to continue..."
+                ;;
+            5)
+                echo ""
+                echo -e "${RED}WARNING: This will overwrite your current identity!${NC}"
+                read -p "Are you sure? (type YES): " confirm
+                if [[ "$confirm" == "YES" ]]; then
+                    if [[ -f "$CONFIG_DIR/identity.json" ]]; then
+                        mv "$CONFIG_DIR/identity.json" "$CONFIG_DIR/identity.json.backup.$(date +%s)"
+                    fi
+                    solana-keygen new -o "$CONFIG_DIR/identity.json" --no-passphrase --force
+                    chmod 600 "$CONFIG_DIR/identity.json"
+                    log_success "New identity generated"
+                fi
+                read -p "Press Enter to continue..."
+                ;;
+            6)
+                echo ""
+                echo -e "${RED}WARNING: This will overwrite your current vote account!${NC}"
+                read -p "Are you sure? (type YES): " confirm
+                if [[ "$confirm" == "YES" ]]; then
+                    if [[ -f "$CONFIG_DIR/vote.json" ]]; then
+                        mv "$CONFIG_DIR/vote.json" "$CONFIG_DIR/vote.json.backup.$(date +%s)"
+                    fi
+                    solana-keygen new -o "$CONFIG_DIR/vote.json" --no-passphrase --force
+                    chmod 600 "$CONFIG_DIR/vote.json"
+                    log_success "New vote account generated"
+                    echo "Note: You'll need to create this on-chain with:"
+                    echo "  solana create-vote-account ~/.config/x1-forge/vote.json ~/.config/x1-forge/identity.json <WITHDRAWER> --url $RPC_URL"
+                fi
+                read -p "Press Enter to continue..."
+                ;;
+            0) return ;;
+        esac
+    done
+}
+
+validator_identity_menu() {
+    load_settings
+
+    while true; do
+        clear
+        echo ""
+        echo -e "${BOLD}Validator Identity & Branding${NC}"
+        echo ""
+        echo "Set your validator's public identity on the X1 network."
+        echo "This information appears in explorer and staking interfaces."
+        echo ""
+
+        echo -e "  Current Name:    ${VALIDATOR_NAME:-${DIM}Not set${NC}}"
+        echo -e "  Current Website: ${VALIDATOR_WEBSITE:-${DIM}Not set${NC}}"
+        echo -e "  Current Icon:    ${VALIDATOR_ICON:-${DIM}Not set${NC}}"
+        echo ""
+        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo ""
+        echo "  1) Set Validator Name"
+        echo "  2) Set Website URL"
+        echo "  3) Set Icon/Image URL"
+        echo "  4) Publish to Network"
+        echo "  5) View Current On-Chain Info"
+        echo ""
+        echo "  0) Back"
+        echo ""
+        read -p "Select option: " id_choice
+
+        case $id_choice in
+            1)
+                echo ""
+                echo "Enter your validator name (e.g., 'MyValidator', 'Cool Staking Co'):"
+                read -p "> " new_name
+                if [[ -n "$new_name" ]]; then
+                    VALIDATOR_NAME="$new_name"
+                    save_settings
+                    log_success "Name set to: $VALIDATOR_NAME"
+                fi
+                read -p "Press Enter to continue..."
+                ;;
+            2)
+                echo ""
+                echo "Enter your website URL (e.g., 'https://myvalidator.com'):"
+                read -p "> " new_website
+                if [[ -n "$new_website" ]]; then
+                    VALIDATOR_WEBSITE="$new_website"
+                    save_settings
+                    log_success "Website set to: $VALIDATOR_WEBSITE"
+                fi
+                read -p "Press Enter to continue..."
+                ;;
+            3)
+                echo ""
+                echo "Enter your icon/image URL (must be publicly accessible .jpg, .png, or .gif)"
+                echo ""
+                echo -e "${DIM}Examples:${NC}"
+                echo "  - https://pbs.twimg.com/profile_images/xxxxx/image.jpg"
+                echo "  - https://i.imgur.com/xxxxx.png"
+                echo "  - https://yoursite.com/validator-logo.png"
+                echo ""
+                echo -e "${YELLOW}Tip: Upload to Twitter/X, Imgur, or your own server${NC}"
+                echo ""
+                read -p "> " new_icon
+                if [[ -n "$new_icon" ]]; then
+                    VALIDATOR_ICON="$new_icon"
+                    save_settings
+                    log_success "Icon set to: $VALIDATOR_ICON"
+                fi
+                read -p "Press Enter to continue..."
+                ;;
+            4)
+                publish_validator_info
+                read -p "Press Enter to continue..."
+                ;;
+            5)
+                echo ""
+                echo "Fetching on-chain validator info..."
+                if [[ -f "$CONFIG_DIR/identity.json" ]]; then
+                    solana validator-info get --keypair "$CONFIG_DIR/identity.json" --url $RPC_URL 2>/dev/null || echo "No info published yet"
+                else
+                    echo "Identity keypair not found"
+                fi
+                read -p "Press Enter to continue..."
+                ;;
+            0) return ;;
+        esac
+    done
+}
+
+publish_validator_info() {
+    load_settings
+
+    echo ""
+    if [[ -z "$VALIDATOR_NAME" ]]; then
+        log_error "Validator name is required. Set it first."
+        return
+    fi
+
+    if [[ ! -f "$CONFIG_DIR/identity.json" ]]; then
+        log_error "Identity keypair not found"
+        return
+    fi
+
+    echo "Publishing validator info to the network..."
+    echo ""
+    echo "  Name:    $VALIDATOR_NAME"
+    echo "  Website: ${VALIDATOR_WEBSITE:-Not set}"
+    echo "  Icon:    ${VALIDATOR_ICON:-Not set}"
+    echo ""
+
+    # Build command
+    CMD="solana validator-info publish \"$VALIDATOR_NAME\""
+    CMD="$CMD --keypair \"$CONFIG_DIR/identity.json\""
+    CMD="$CMD --url $RPC_URL"
+
+    if [[ -n "$VALIDATOR_WEBSITE" ]]; then
+        CMD="$CMD --website \"$VALIDATOR_WEBSITE\""
+    fi
+
+    if [[ -n "$VALIDATOR_ICON" ]]; then
+        CMD="$CMD --icon-url \"$VALIDATOR_ICON\""
+    fi
+
+    echo "Running: $CMD"
+    echo ""
+
+    if eval $CMD; then
+        log_success "Validator info published successfully!"
+    else
+        log_error "Failed to publish. Make sure your identity has enough XNT for the transaction."
+    fi
+}
+
+toggle_autostart() {
+    if systemctl is-enabled x1-forge &>/dev/null; then
+        sudo systemctl disable x1-forge
+        log_success "Auto-start disabled"
+    else
+        sudo systemctl enable x1-forge
+        log_success "Auto-start enabled"
+    fi
+    sleep 1
+}
+
+toggle_autoupdate() {
+    load_settings
+
+    if [[ "$AUTOUPDATE_ENABLED" == "true" ]]; then
+        AUTOUPDATE_ENABLED="false"
+        # Remove cron job
+        (crontab -l 2>/dev/null | grep -v "x1-forge-update") | crontab -
+        log_success "Auto-update disabled"
+    else
+        AUTOUPDATE_ENABLED="true"
+        # Add daily update check at 3 AM
+        install_autoupdater
+        log_success "Auto-update enabled (checks daily at 3 AM)"
+    fi
+
+    save_settings
+    sleep 1
+}
+
+install_autoupdater() {
+    # Create update script
+    sudo tee "$INSTALL_DIR/bin/x1-forge-update" > /dev/null << 'UPDATER'
+#!/bin/bash
+# X1-Forge Auto-Updater
+
+INSTALL_DIR="/opt/x1-forge"
+TACHYON_REPO="x1-labs/tachyon"
+LOG_FILE="/var/log/x1-forge-update.log"
+
+log() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$LOG_FILE"
+}
+
+log "Starting update check..."
+
+# Check for updates by comparing git commits
+cd /tmp
+rm -rf tachyon-check
+git clone --depth 1 https://github.com/$TACHYON_REPO.git tachyon-check 2>/dev/null
+
+if [[ -d tachyon-check ]]; then
+    NEW_COMMIT=$(cd tachyon-check && git rev-parse HEAD)
+    CURRENT_COMMIT=$(cat "$INSTALL_DIR/commit" 2>/dev/null || echo "none")
+
+    if [[ "$NEW_COMMIT" != "$CURRENT_COMMIT" ]]; then
+        log "Update available: $CURRENT_COMMIT -> $NEW_COMMIT"
+
+        # Build new version
+        cd tachyon-check
+        export RUSTFLAGS="-C target-cpu=native"
+        if cargo build --release -p tachyon-validator >> "$LOG_FILE" 2>&1; then
+            # Stop service
+            systemctl stop x1-forge 2>/dev/null
+
+            # Backup and install
+            cp "$INSTALL_DIR/bin/x1-forge" "$INSTALL_DIR/bin/x1-forge.backup" 2>/dev/null
+            cp target/release/tachyon-validator "$INSTALL_DIR/bin/x1-forge"
+            chmod +x "$INSTALL_DIR/bin/x1-forge"
+            echo "$NEW_COMMIT" > "$INSTALL_DIR/commit"
+
+            # Restart service
+            systemctl start x1-forge 2>/dev/null
+
+            log "Update completed successfully"
+        else
+            log "Build failed, keeping current version"
+        fi
+    else
+        log "Already up to date"
+    fi
+
+    rm -rf /tmp/tachyon-check
+fi
+UPDATER
+    sudo chmod +x "$INSTALL_DIR/bin/x1-forge-update"
+
+    # Add to cron (daily at 3 AM)
+    (crontab -l 2>/dev/null | grep -v "x1-forge-update"; echo "0 3 * * * $INSTALL_DIR/bin/x1-forge-update") | crontab -
+}
+
+show_validator_info() {
+    echo ""
+    echo -e "${BOLD}Validator Information${NC}"
+    echo ""
+
+    if [[ -f "$CONFIG_DIR/identity.json" ]]; then
+        IDENTITY=$(solana-keygen pubkey "$CONFIG_DIR/identity.json")
+        echo "Identity: $IDENTITY"
+        echo "Balance: $(solana balance $CONFIG_DIR/identity.json --url $RPC_URL 2>/dev/null || echo 'Error')"
+    fi
+
+    if [[ -f "$CONFIG_DIR/vote.json" ]]; then
+        VOTE=$(solana-keygen pubkey "$CONFIG_DIR/vote.json")
+        echo "Vote Account: $VOTE"
+        echo ""
+        echo "Vote Account Details:"
+        solana vote-account "$CONFIG_DIR/vote.json" --url $RPC_URL 2>/dev/null || echo "Not found on-chain"
+    fi
+
+    echo ""
+    echo "Binary Version: $(cat $INSTALL_DIR/version 2>/dev/null || echo 'Unknown')"
+    echo "Service Status: $(systemctl is-active x1-forge 2>/dev/null || echo 'Unknown')"
+}
+
+rebuild_binary() {
+    echo ""
+    log_info "Rebuilding X1-Forge from source..."
+    echo "This will take 15-30 minutes."
+    echo ""
+    read -p "Continue? (y/N): " confirm
+    if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+        return
+    fi
+
+    # Stop service if running
+    if systemctl is-active x1-forge &>/dev/null; then
+        log_info "Stopping service..."
+        sudo systemctl stop x1-forge
+    fi
+
+    cd /tmp
+    rm -rf tachyon-build
+    git clone --depth 1 https://github.com/$TACHYON_REPO.git tachyon-build
+    cd tachyon-build
+
+    export RUSTFLAGS="-C target-cpu=native"
+    cargo build --release -p tachyon-validator
+
+    sudo cp target/release/tachyon-validator "$INSTALL_DIR/bin/x1-forge"
+    sudo chmod +x "$INSTALL_DIR/bin/x1-forge"
+
+    cd /
+    rm -rf /tmp/tachyon-build
+
+    log_success "Binary rebuilt"
+
+    read -p "Start the service? (Y/n): " start_confirm
+    if [[ ! "$start_confirm" =~ ^[Nn]$ ]]; then
+        sudo systemctl start x1-forge
+        log_success "Service started"
+    fi
+}
+
+# ═══════════════════════════════════════════════════════════════
+# Installation Functions
+# ═══════════════════════════════════════════════════════════════
 
 print_banner() {
     clear
@@ -71,9 +582,10 @@ print_overview() {
     echo "  3. Generate or import your validator keypairs"
     echo "  4. Wait for you to fund your identity wallet"
     echo "  5. Create your vote account on-chain"
-    echo "  6. Build the validator from source (compiles Tachyon)"
-    echo "  7. Configure firewall ports (8000-8020, 8899)"
-    echo "  8. Install systemd service for auto-start"
+    echo "  6. Set validator identity (name, website, icon)"
+    echo "  7. Build the validator from source (compiles Tachyon)"
+    echo "  8. Configure firewall ports (8000-8020, 8899)"
+    echo "  9. Optionally install as systemd service"
     echo ""
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo -e "${BOLD}What You'll Need:${NC}"
@@ -97,14 +609,20 @@ print_overview() {
     echo "  - 100 Mbps network (1 Gbps recommended)"
     echo "  - Ports 8000-8020, 8899 open"
     echo ""
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${BOLD}After Installation:${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+    echo "  Run 'x1-forge-config' to:"
+    echo "  - Manage wallets"
+    echo "  - Toggle auto-start on boot"
+    echo "  - Enable/disable auto-updates"
+    echo "  - Reconfigure firewall"
+    echo ""
 }
 
-# ═══════════════════════════════════════════════════════════════
-# STEP 1: System Requirements Check
-# ═══════════════════════════════════════════════════════════════
-
 check_requirements() {
-    log_step "1/7" "Checking System Requirements"
+    log_step "1/9" "Checking System Requirements"
 
     OS=$(uname -s)
     ARCH=$(uname -m)
@@ -119,7 +637,6 @@ check_requirements() {
     local errors=0
     local warnings=0
 
-    # OS Check
     if [[ "$OS" == "Linux" ]]; then
         log_success "Operating System: Linux"
     else
@@ -127,7 +644,6 @@ check_requirements() {
         errors=$((errors + 1))
     fi
 
-    # Architecture
     if [[ "$ARCH" == "x86_64" ]]; then
         log_success "Architecture: x86_64"
     else
@@ -135,7 +651,6 @@ check_requirements() {
         errors=$((errors + 1))
     fi
 
-    # CPU
     if [[ $CPU_CORES -ge 16 ]]; then
         log_success "CPU Cores: $CPU_CORES (recommended: 16+)"
     elif [[ $CPU_CORES -ge 8 ]]; then
@@ -146,7 +661,6 @@ check_requirements() {
         errors=$((errors + 1))
     fi
 
-    # RAM
     if [[ $RAM_GB -ge 128 ]]; then
         log_success "RAM: ${RAM_GB}GB (recommended: 128GB+)"
     elif [[ $RAM_GB -ge 60 ]]; then
@@ -157,7 +671,6 @@ check_requirements() {
         errors=$((errors + 1))
     fi
 
-    # Disk
     if [[ $DISK_FREE_GB -ge 1000 ]]; then
         log_success "Disk Free: ${DISK_FREE_GB}GB (recommended: 1TB+)"
     elif [[ $DISK_FREE_GB -ge 400 ]]; then
@@ -168,7 +681,6 @@ check_requirements() {
         errors=$((errors + 1))
     fi
 
-    # Port check
     if command -v ss &>/dev/null; then
         if ss -tuln | grep -q ':8899 '; then
             log_warn "Port 8899 already in use"
@@ -178,16 +690,12 @@ check_requirements() {
         fi
     fi
 
-    # Summary
     echo ""
     if [[ $errors -gt 0 ]]; then
         echo -e "${RED}${BOLD}System does not meet minimum requirements.${NC}"
-        echo "Please upgrade your hardware before continuing."
         exit 1
     elif [[ $warnings -gt 0 ]]; then
         echo -e "${YELLOW}${BOLD}System meets minimum requirements with warnings.${NC}"
-        echo "Your validator will work, but performance may be limited."
-        echo ""
         read -p "Continue anyway? (y/N): " -n 1 -r
         echo
         if [[ ! $REPLY =~ ^[Yy]$ ]]; then
@@ -198,15 +706,8 @@ check_requirements() {
     fi
 }
 
-# ═══════════════════════════════════════════════════════════════
-# STEP 2: Install Dependencies
-# ═══════════════════════════════════════════════════════════════
-
 install_dependencies() {
-    log_step "2/7" "Installing Dependencies"
-
-    echo "Installing build tools and libraries..."
-    echo ""
+    log_step "2/9" "Installing Dependencies"
 
     if command -v apt-get &>/dev/null; then
         sudo apt-get update -qq
@@ -220,364 +721,257 @@ install_dependencies() {
     fi
     log_success "System dependencies installed"
 
-    # Rust
     if command -v rustc &>/dev/null; then
-        log_success "Rust already installed: $(rustc --version | cut -d' ' -f2)"
+        log_success "Rust already installed"
     else
-        echo "Installing Rust..."
         curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y -q
         source "$HOME/.cargo/env"
         log_success "Rust installed"
     fi
 
-    # Solana CLI
     if command -v solana &>/dev/null; then
         log_success "Solana CLI already installed"
     else
-        echo "Installing Solana CLI..."
         sh -c "$(curl -sSfL https://release.anza.xyz/stable/install)" 2>/dev/null
         export PATH="$HOME/.local/share/solana/install/active_release/bin:$PATH"
         log_success "Solana CLI installed"
     fi
 
-    # Configure Solana for mainnet
     solana config set --url $RPC_URL -q
 }
 
-# ═══════════════════════════════════════════════════════════════
-# STEP 3: Wallet Setup
-# ═══════════════════════════════════════════════════════════════
-
 setup_wallets() {
-    log_step "3/7" "Wallet Setup"
+    log_step "3/9" "Wallet Setup"
 
     mkdir -p "$CONFIG_DIR"
-
     IDENTITY_PATH="$CONFIG_DIR/identity.json"
     VOTE_PATH="$CONFIG_DIR/vote.json"
 
     echo "Your validator needs two keypairs:"
-    echo "  1. ${BOLD}Identity${NC} - Your validator's unique identity on the network"
-    echo "  2. ${BOLD}Vote Account${NC} - Receives staking delegations and rewards"
+    echo "  1. ${BOLD}Identity${NC} - Your validator's unique identity"
+    echo "  2. ${BOLD}Vote Account${NC} - Receives staking delegations"
     echo ""
 
-    # Check for existing keypairs
     if [[ -f "$IDENTITY_PATH" ]] || [[ -f "$VOTE_PATH" ]]; then
         echo -e "${YELLOW}Existing keypairs found:${NC}"
-        [[ -f "$IDENTITY_PATH" ]] && echo "  Identity: $(solana-keygen pubkey $IDENTITY_PATH 2>/dev/null || echo 'invalid')"
-        [[ -f "$VOTE_PATH" ]] && echo "  Vote: $(solana-keygen pubkey $VOTE_PATH 2>/dev/null || echo 'invalid')"
+        [[ -f "$IDENTITY_PATH" ]] && echo "  Identity: $(solana-keygen pubkey $IDENTITY_PATH 2>/dev/null)"
+        [[ -f "$VOTE_PATH" ]] && echo "  Vote: $(solana-keygen pubkey $VOTE_PATH 2>/dev/null)"
         echo ""
     fi
 
-    echo "How would you like to set up your keypairs?"
+    echo "  1) ${GREEN}Create NEW keypairs${NC}"
+    echo "  2) ${CYAN}Import EXISTING keypairs${NC}"
+    echo "  3) ${YELLOW}Keep existing keypairs${NC}"
     echo ""
-    echo "  1) ${GREEN}Create NEW keypairs${NC} (fresh validator)"
-    echo "  2) ${CYAN}Import EXISTING keypairs${NC} (migrating from another server)"
-    echo "  3) ${YELLOW}Keep existing keypairs${NC} (already set up)"
-    echo ""
-
-    read -p "Select option [1-3]: " wallet_choice
+    read -p "Select [1-3]: " wallet_choice
 
     case $wallet_choice in
-        1)
-            create_new_wallets
-            ;;
-        2)
-            import_existing_wallets
-            ;;
+        1) create_new_wallets ;;
+        2) import_existing_wallets ;;
         3)
             if [[ ! -f "$IDENTITY_PATH" ]] || [[ ! -f "$VOTE_PATH" ]]; then
-                log_error "Existing keypairs not found. Please choose option 1 or 2."
+                log_error "Keypairs not found"
                 setup_wallets
                 return
             fi
-            log_success "Using existing keypairs"
-            ;;
-        *)
-            log_error "Invalid option"
-            setup_wallets
-            return
             ;;
     esac
 
-    # Display keypair info
-    echo ""
-    echo -e "${GREEN}${BOLD}Keypairs configured:${NC}"
     IDENTITY_PUBKEY=$(solana-keygen pubkey "$IDENTITY_PATH")
     VOTE_PUBKEY=$(solana-keygen pubkey "$VOTE_PATH")
-    echo "  Identity:     $IDENTITY_PUBKEY"
-    echo "  Vote Account: $VOTE_PUBKEY"
 
-    # Backup warning
     echo ""
     echo -e "${RED}${BOLD}╔═══════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${RED}${BOLD}║  CRITICAL: BACK UP YOUR KEYPAIRS NOW!                         ║${NC}"
-    echo -e "${RED}${BOLD}║                                                               ║${NC}"
-    echo -e "${RED}${BOLD}║  Copy these files to secure offline storage:                  ║${NC}"
-    echo -e "${RED}${BOLD}║    $IDENTITY_PATH${NC}"
-    echo -e "${RED}${BOLD}║    $VOTE_PATH${NC}"
-    echo -e "${RED}${BOLD}║                                                               ║${NC}"
-    echo -e "${RED}${BOLD}║  Loss of these files = LOSS OF YOUR VALIDATOR                 ║${NC}"
+    echo -e "${RED}${BOLD}║  BACKUP YOUR KEYPAIRS NOW!                                    ║${NC}"
+    echo -e "${RED}${BOLD}║  $IDENTITY_PATH${NC}"
+    echo -e "${RED}${BOLD}║  $VOTE_PATH${NC}"
     echo -e "${RED}${BOLD}╚═══════════════════════════════════════════════════════════════╝${NC}"
-    echo ""
-    read -p "Press Enter after you have backed up your keypairs..."
+    read -p "Press Enter after backing up..."
 }
 
 create_new_wallets() {
-    echo ""
-    log_info "Creating new identity keypair..."
-    solana-keygen new -o "$IDENTITY_PATH" --no-passphrase --force -q
-    chmod 600 "$IDENTITY_PATH"
-    log_success "Identity created: $(solana-keygen pubkey $IDENTITY_PATH)"
+    solana-keygen new -o "$CONFIG_DIR/identity.json" --no-passphrase --force -q
+    chmod 600 "$CONFIG_DIR/identity.json"
+    log_success "Identity created"
 
-    log_info "Creating new vote account keypair..."
-    solana-keygen new -o "$VOTE_PATH" --no-passphrase --force -q
-    chmod 600 "$VOTE_PATH"
-    log_success "Vote account created: $(solana-keygen pubkey $VOTE_PATH)"
+    solana-keygen new -o "$CONFIG_DIR/vote.json" --no-passphrase --force -q
+    chmod 600 "$CONFIG_DIR/vote.json"
+    log_success "Vote account created"
 }
 
 import_existing_wallets() {
     echo ""
-    echo "Import options:"
-    echo "  1) Provide file paths to existing keypair JSON files"
-    echo "  2) Paste private key bytes (for recovery)"
-    echo ""
-    read -p "Select [1-2]: " import_method
+    echo "  1) Import from file paths"
+    echo "  2) Paste private key bytes"
+    read -p "Select [1-2]: " method
 
-    case $import_method in
-        1)
-            import_from_files
-            ;;
-        2)
-            import_from_bytes
-            ;;
-        *)
-            log_error "Invalid option"
-            import_existing_wallets
-            ;;
-    esac
-}
+    if [[ "$method" == "1" ]]; then
+        read -p "Path to identity.json: " id_path
+        id_path="${id_path/#\~/$HOME}"
+        cp "$id_path" "$CONFIG_DIR/identity.json"
+        chmod 600 "$CONFIG_DIR/identity.json"
 
-import_from_files() {
-    echo ""
-    read -p "Path to identity keypair JSON: " identity_source
-    identity_source="${identity_source/#\~/$HOME}"
-    if [[ -f "$identity_source" ]]; then
-        cp "$identity_source" "$IDENTITY_PATH"
-        chmod 600 "$IDENTITY_PATH"
-        log_success "Identity imported: $(solana-keygen pubkey $IDENTITY_PATH)"
+        read -p "Path to vote.json: " vote_path
+        vote_path="${vote_path/#\~/$HOME}"
+        cp "$vote_path" "$CONFIG_DIR/vote.json"
+        chmod 600 "$CONFIG_DIR/vote.json"
     else
-        log_error "File not found: $identity_source"
-        exit 1
-    fi
+        echo "Paste identity key bytes:"
+        read -r bytes
+        echo "$bytes" > "$CONFIG_DIR/identity.json"
+        chmod 600 "$CONFIG_DIR/identity.json"
 
-    read -p "Path to vote account keypair JSON: " vote_source
-    vote_source="${vote_source/#\~/$HOME}"
-    if [[ -f "$vote_source" ]]; then
-        cp "$vote_source" "$VOTE_PATH"
-        chmod 600 "$VOTE_PATH"
-        log_success "Vote account imported: $(solana-keygen pubkey $VOTE_PATH)"
-    else
-        log_error "File not found: $vote_source"
-        exit 1
+        echo "Paste vote key bytes:"
+        read -r bytes
+        echo "$bytes" > "$CONFIG_DIR/vote.json"
+        chmod 600 "$CONFIG_DIR/vote.json"
     fi
 }
-
-import_from_bytes() {
-    echo ""
-    echo "Paste your identity private key as JSON array (e.g., [1,2,3,...]):"
-    read -r identity_bytes
-    echo "$identity_bytes" > "$IDENTITY_PATH"
-    chmod 600 "$IDENTITY_PATH"
-
-    if solana-keygen pubkey "$IDENTITY_PATH" &>/dev/null; then
-        log_success "Identity imported: $(solana-keygen pubkey $IDENTITY_PATH)"
-    else
-        log_error "Invalid identity key format"
-        rm -f "$IDENTITY_PATH"
-        exit 1
-    fi
-
-    echo ""
-    echo "Paste your vote account private key as JSON array:"
-    read -r vote_bytes
-    echo "$vote_bytes" > "$VOTE_PATH"
-    chmod 600 "$VOTE_PATH"
-
-    if solana-keygen pubkey "$VOTE_PATH" &>/dev/null; then
-        log_success "Vote account imported: $(solana-keygen pubkey $VOTE_PATH)"
-    else
-        log_error "Invalid vote key format"
-        rm -f "$VOTE_PATH"
-        exit 1
-    fi
-}
-
-# ═══════════════════════════════════════════════════════════════
-# STEP 4: Fund Identity Wallet
-# ═══════════════════════════════════════════════════════════════
 
 fund_identity() {
-    log_step "4/7" "Fund Identity Wallet"
+    log_step "4/9" "Fund Identity Wallet"
 
-    IDENTITY_PUBKEY=$(solana-keygen pubkey "$IDENTITY_PATH")
+    IDENTITY_PUBKEY=$(solana-keygen pubkey "$CONFIG_DIR/identity.json")
+    BALANCE=$(solana balance "$CONFIG_DIR/identity.json" --url $RPC_URL 2>/dev/null | awk '{print $1}' || echo "0")
 
-    # Check current balance
-    BALANCE=$(solana balance "$IDENTITY_PATH" --url $RPC_URL 2>/dev/null | awk '{print $1}' || echo "0")
-
-    echo "Your identity wallet pays for vote transaction fees."
-    echo "Minimum recommended: ${BOLD}0.5 XNT${NC}"
-    echo ""
     echo "Current balance: ${BOLD}$BALANCE XNT${NC}"
     echo ""
 
     if (( $(echo "$BALANCE >= 0.5" | bc -l 2>/dev/null || echo 0) )); then
-        log_success "Wallet is funded!"
+        log_success "Wallet funded!"
         return
     fi
 
-    echo -e "${CYAN}${BOLD}Send XNT to this address:${NC}"
+    echo -e "Send XNT to: ${GREEN}${BOLD}$IDENTITY_PUBKEY${NC}"
     echo ""
-    echo -e "  ${GREEN}${BOLD}$IDENTITY_PUBKEY${NC}"
-    echo ""
-    echo "You can send from:"
-    echo "  - An exchange (withdrawal to this address)"
-    echo "  - Another wallet: solana transfer $IDENTITY_PUBKEY <AMOUNT> --url $RPC_URL"
-    echo ""
-
-    echo "Waiting for funds to arrive..."
-    echo "(Checking every 30 seconds. Press Ctrl+C to skip and fund later)"
-    echo ""
+    echo "Waiting for funds... (Ctrl+C to skip)"
 
     while true; do
-        BALANCE=$(solana balance "$IDENTITY_PATH" --url $RPC_URL 2>/dev/null | awk '{print $1}' || echo "0")
-
+        BALANCE=$(solana balance "$CONFIG_DIR/identity.json" --url $RPC_URL 2>/dev/null | awk '{print $1}' || echo "0")
         if (( $(echo "$BALANCE >= 0.1" | bc -l 2>/dev/null || echo 0) )); then
-            echo ""
-            log_success "Funds received! Balance: $BALANCE XNT"
+            log_success "Funds received: $BALANCE XNT"
             break
         fi
-
         echo -ne "\r  Balance: $BALANCE XNT - Waiting...  "
         sleep 30
     done
 }
 
-# ═══════════════════════════════════════════════════════════════
-# STEP 5: Create Vote Account On-Chain
-# ═══════════════════════════════════════════════════════════════
-
 create_vote_account() {
-    log_step "5/7" "Create Vote Account On-Chain"
+    log_step "5/9" "Create Vote Account"
 
-    IDENTITY_PUBKEY=$(solana-keygen pubkey "$IDENTITY_PATH")
-    VOTE_PUBKEY=$(solana-keygen pubkey "$VOTE_PATH")
+    IDENTITY_PUBKEY=$(solana-keygen pubkey "$CONFIG_DIR/identity.json")
+    VOTE_PUBKEY=$(solana-keygen pubkey "$CONFIG_DIR/vote.json")
 
-    # Check if vote account already exists
-    if solana vote-account "$VOTE_PATH" --url $RPC_URL &>/dev/null; then
-        log_success "Vote account already exists on-chain"
+    if solana vote-account "$CONFIG_DIR/vote.json" --url $RPC_URL &>/dev/null; then
+        log_success "Vote account exists"
         return
     fi
 
-    echo "Your vote account needs to be created on the blockchain."
-    echo ""
-    echo "The ${BOLD}withdrawer${NC} is the wallet that can withdraw your staking rewards."
-    echo -e "${YELLOW}Tip: Use a separate secure wallet (cold storage) as withdrawer,${NC}"
-    echo -e "${YELLOW}     not your validator identity, for better security.${NC}"
-    echo ""
+    echo "  1) Enter separate withdrawer (recommended)"
+    echo "  2) Use identity as withdrawer"
+    read -p "Select [1-2]: " choice
 
-    echo "Withdrawer options:"
-    echo "  1) Enter a separate wallet address (recommended)"
-    echo "  2) Use my identity as withdrawer (simpler, less secure)"
-    echo ""
-    read -p "Select [1-2]: " withdrawer_choice
+    if [[ "$choice" == "1" ]]; then
+        read -p "Withdrawer public key: " WITHDRAWER
+    else
+        WITHDRAWER="$IDENTITY_PUBKEY"
+    fi
 
-    case $withdrawer_choice in
-        1)
-            read -p "Enter withdrawer public key: " WITHDRAWER_PUBKEY
-            ;;
-        2)
-            WITHDRAWER_PUBKEY="$IDENTITY_PUBKEY"
-            log_warn "Using identity as withdrawer. Consider changing this later for security."
-            ;;
-        *)
-            WITHDRAWER_PUBKEY="$IDENTITY_PUBKEY"
-            ;;
-    esac
-
-    echo ""
-    echo "Set your commission rate (percentage of staking rewards you keep):"
-    echo "  Common rates: 5%, 10%, 15%"
-    echo ""
-    read -p "Commission percentage [default: 10]: " COMMISSION
+    read -p "Commission % [10]: " COMMISSION
     COMMISSION=${COMMISSION:-10}
 
-    echo ""
-    log_info "Creating vote account on-chain..."
-    echo "  Vote Account: $VOTE_PUBKEY"
-    echo "  Authority: $IDENTITY_PUBKEY"
-    echo "  Withdrawer: $WITHDRAWER_PUBKEY"
-    echo "  Commission: $COMMISSION%"
-    echo ""
+    solana create-vote-account "$CONFIG_DIR/vote.json" "$CONFIG_DIR/identity.json" "$WITHDRAWER" \
+        --commission "$COMMISSION" --url $RPC_URL --keypair "$CONFIG_DIR/identity.json" || true
+}
 
-    if solana create-vote-account "$VOTE_PATH" "$IDENTITY_PATH" "$WITHDRAWER_PUBKEY" \
-        --commission "$COMMISSION" \
-        --url $RPC_URL \
-        --keypair "$IDENTITY_PATH"; then
-        log_success "Vote account created successfully!"
-    else
-        log_error "Failed to create vote account. You can retry manually later:"
-        echo "  solana create-vote-account $VOTE_PATH $IDENTITY_PATH $WITHDRAWER_PUBKEY --commission $COMMISSION --url $RPC_URL"
+setup_validator_identity() {
+    log_step "6/9" "Validator Identity (Optional)"
+
+    echo "Set your validator's public identity on the X1 network."
+    echo "This appears in explorers and staking interfaces."
+    echo ""
+    read -p "Configure now? (Y/n): " configure
+    if [[ "$configure" =~ ^[Nn]$ ]]; then
+        log_info "Skipped. Run 'x1-forge-config' later to set up."
+        return
+    fi
+
+    echo ""
+    echo "Enter your validator name (e.g., 'MyValidator', 'Cool Staking Co'):"
+    read -p "> " VALIDATOR_NAME
+
+    echo ""
+    echo "Enter your website URL (optional, press Enter to skip):"
+    read -p "> " VALIDATOR_WEBSITE
+
+    echo ""
+    echo "Enter your icon/image URL (optional, press Enter to skip)"
+    echo -e "${DIM}Examples:${NC}"
+    echo "  - https://pbs.twimg.com/profile_images/xxxxx/image.jpg"
+    echo "  - https://i.imgur.com/xxxxx.png"
+    echo "  - https://yoursite.com/logo.png"
+    echo ""
+    read -p "> " VALIDATOR_ICON
+
+    save_settings
+
+    if [[ -n "$VALIDATOR_NAME" ]]; then
+        echo ""
+        log_info "Publishing validator info..."
+
+        CMD="solana validator-info publish \"$VALIDATOR_NAME\""
+        CMD="$CMD --keypair \"$CONFIG_DIR/identity.json\""
+        CMD="$CMD --url $RPC_URL"
+
+        if [[ -n "$VALIDATOR_WEBSITE" ]]; then
+            CMD="$CMD --website \"$VALIDATOR_WEBSITE\""
+        fi
+
+        if [[ -n "$VALIDATOR_ICON" ]]; then
+            CMD="$CMD --icon-url \"$VALIDATOR_ICON\""
+        fi
+
+        if eval $CMD 2>/dev/null; then
+            log_success "Validator info published!"
+        else
+            log_warn "Could not publish now. Run 'x1-forge-config' later to retry."
+        fi
     fi
 }
 
-# ═══════════════════════════════════════════════════════════════
-# STEP 6: Build and Install Validator
-# ═══════════════════════════════════════════════════════════════
-
 build_and_install() {
-    log_step "6/7" "Build and Install Validator"
+    log_step "7/9" "Build Validator"
 
-    # Create directories
-    sudo mkdir -p "$INSTALL_DIR"/{bin,lib,backups}
+    sudo mkdir -p "$INSTALL_DIR"/{bin,lib}
     sudo mkdir -p "$DATA_DIR"/ledger
     sudo chown -R "$USER:$USER" "$DATA_DIR" 2>/dev/null || true
 
-    # Build validator
-    echo "Building X1-Forge from Tachyon source..."
-    echo "This takes 15-30 minutes on first build."
-    echo ""
+    echo "Building from source (15-30 minutes)..."
 
     cd /tmp
     rm -rf tachyon-build
-
     git clone --depth 1 https://github.com/$TACHYON_REPO.git tachyon-build
     cd tachyon-build
 
     export RUSTFLAGS="-C target-cpu=native"
-    cargo build --release -p tachyon-validator 2>&1 | while read line; do
-        echo -ne "\r  Building... $line                    \r"
-    done
+    cargo build --release -p tachyon-validator
 
     sudo cp target/release/tachyon-validator "$INSTALL_DIR/bin/x1-forge"
     sudo chmod +x "$INSTALL_DIR/bin/x1-forge"
     echo "$FORGE_VERSION" | sudo tee "$INSTALL_DIR/version" > /dev/null
+    git rev-parse HEAD | sudo tee "$INSTALL_DIR/commit" > /dev/null
 
     cd /
     rm -rf /tmp/tachyon-build
 
-    log_success "Validator binary built"
+    log_success "Binary built"
 
     # Install CLI wrapper
     install_cli_wrapper
 
     # Apply kernel tuning
     apply_kernel_tuning
-
-    # Install systemd service
-    install_systemd_service
-
-    log_success "X1-Forge installed successfully!"
 }
 
 install_cli_wrapper() {
@@ -593,25 +987,24 @@ case "$1" in
     health)  curl -s http://localhost:8899/health 2>/dev/null || echo "Not responding" ;;
     *)
         echo "X1-Forge - Voting Validator"
-        echo ""
-        echo "Commands:"
-        echo "  start/stop/restart  - Control validator"
-        echo "  status              - Show service status"
-        echo "  logs                - Follow logs"
-        echo "  catchup             - Show sync progress"
-        echo "  health              - Health check"
+        echo "Commands: start|stop|restart|status|logs|catchup|health"
         ;;
 esac
 WRAPPER
     sudo chmod +x "$BIN_DIR/x1-forge"
+
+    # Install config tool
+    sudo tee "$BIN_DIR/x1-forge-config" > /dev/null << 'CONFIG'
+#!/bin/bash
+curl -sSfL https://raw.githubusercontent.com/fortiblox/X1-Forge/main/install.sh | bash -s -- --config
+CONFIG
+    sudo chmod +x "$BIN_DIR/x1-forge-config"
 }
 
 apply_kernel_tuning() {
     sudo tee /etc/sysctl.d/99-x1-forge.conf > /dev/null << 'EOF'
 net.core.rmem_max=134217728
 net.core.wmem_max=134217728
-net.core.rmem_default=134217728
-net.core.wmem_default=134217728
 vm.max_map_count=2000000
 vm.swappiness=10
 fs.file-max=2097152
@@ -624,7 +1017,51 @@ $USER hard nofile 1000000
 EOF
 }
 
-install_systemd_service() {
+configure_firewall() {
+    log_step "8/9" "Configure Firewall"
+
+    echo "Required ports: 8000-8020 (UDP/TCP), 8899 (TCP)"
+    echo ""
+
+    if command -v ufw &>/dev/null && sudo ufw status | grep -q "Status: active"; then
+        sudo ufw allow 8000:8020/tcp >/dev/null 2>&1
+        sudo ufw allow 8000:8020/udp >/dev/null 2>&1
+        sudo ufw allow 8899/tcp >/dev/null 2>&1
+        log_success "UFW configured"
+    elif command -v firewall-cmd &>/dev/null && systemctl is-active --quiet firewalld; then
+        sudo firewall-cmd --permanent --add-port=8000-8020/tcp >/dev/null 2>&1
+        sudo firewall-cmd --permanent --add-port=8000-8020/udp >/dev/null 2>&1
+        sudo firewall-cmd --permanent --add-port=8899/tcp >/dev/null 2>&1
+        sudo firewall-cmd --reload >/dev/null 2>&1
+        log_success "Firewalld configured"
+    elif command -v iptables &>/dev/null; then
+        sudo iptables -A INPUT -p tcp --dport 8000:8020 -j ACCEPT 2>/dev/null || true
+        sudo iptables -A INPUT -p udp --dport 8000:8020 -j ACCEPT 2>/dev/null || true
+        sudo iptables -A INPUT -p tcp --dport 8899 -j ACCEPT 2>/dev/null || true
+        log_success "iptables configured"
+    else
+        log_warn "No firewall detected"
+    fi
+
+    echo -e "${DIM}Note: Configure cloud security groups separately if applicable.${NC}"
+}
+
+setup_service() {
+    log_step "9/9" "Service Setup"
+
+    echo "Install as systemd service?"
+    echo "  - Enables 'x1-forge start/stop/restart' commands"
+    echo "  - Optional auto-start on boot"
+    echo ""
+    read -p "Install service? (Y/n): " install_service
+    if [[ "$install_service" =~ ^[Nn]$ ]]; then
+        log_info "Skipping service installation"
+        echo ""
+        echo "To run manually:"
+        echo "  $INSTALL_DIR/bin/x1-forge --identity ~/.config/x1-forge/identity.json ..."
+        return
+    fi
+
     IDENTITY_PATH="$CONFIG_DIR/identity.json"
     VOTE_PATH="$CONFIG_DIR/vote.json"
 
@@ -669,96 +1106,48 @@ WantedBy=multi-user.target
 EOF
 
     sudo systemctl daemon-reload
-    sudo systemctl enable x1-forge
-}
+    log_success "Service installed"
 
-# ═══════════════════════════════════════════════════════════════
-# STEP 7: Configure Firewall
-# ═══════════════════════════════════════════════════════════════
-
-configure_firewall() {
-    log_step "7/7" "Configuring Firewall"
-
-    log_info "Opening required ports..."
     echo ""
-    echo "Required ports:"
-    echo "  - 8000-8020 (UDP/TCP): Gossip and data transfer"
-    echo "  - 8899 (TCP): RPC"
-    echo ""
-
-    # Detect and configure firewall
-    if command -v ufw &>/dev/null && sudo ufw status | grep -q "Status: active"; then
-        log_info "Detected UFW firewall, configuring..."
-        sudo ufw allow 8000:8020/tcp >/dev/null 2>&1
-        sudo ufw allow 8000:8020/udp >/dev/null 2>&1
-        sudo ufw allow 8899/tcp >/dev/null 2>&1
-        log_success "UFW rules added"
-
-    elif command -v firewall-cmd &>/dev/null && systemctl is-active --quiet firewalld; then
-        log_info "Detected firewalld, configuring..."
-        sudo firewall-cmd --permanent --add-port=8000-8020/tcp >/dev/null 2>&1
-        sudo firewall-cmd --permanent --add-port=8000-8020/udp >/dev/null 2>&1
-        sudo firewall-cmd --permanent --add-port=8899/tcp >/dev/null 2>&1
-        sudo firewall-cmd --reload >/dev/null 2>&1
-        log_success "Firewalld rules added"
-
-    elif command -v iptables &>/dev/null; then
-        log_info "Configuring iptables..."
-        sudo iptables -A INPUT -p tcp --dport 8000:8020 -j ACCEPT 2>/dev/null || true
-        sudo iptables -A INPUT -p udp --dport 8000:8020 -j ACCEPT 2>/dev/null || true
-        sudo iptables -A INPUT -p tcp --dport 8899 -j ACCEPT 2>/dev/null || true
-
-        # Try to save rules
-        if command -v netfilter-persistent &>/dev/null; then
-            sudo netfilter-persistent save >/dev/null 2>&1 || true
-        elif [[ -f /etc/sysconfig/iptables ]]; then
-            sudo service iptables save >/dev/null 2>&1 || true
-        fi
-        log_success "iptables rules added"
+    read -p "Enable auto-start on boot? (Y/n): " autostart
+    if [[ ! "$autostart" =~ ^[Nn]$ ]]; then
+        sudo systemctl enable x1-forge
+        AUTOSTART_ENABLED="true"
+        log_success "Auto-start enabled"
     else
-        log_warn "No firewall detected or firewall inactive"
-        echo ""
-        echo -e "${YELLOW}Please manually open these ports if you have a firewall:${NC}"
-        echo "  - 8000-8020/tcp and 8000-8020/udp"
-        echo "  - 8899/tcp"
+        AUTOSTART_ENABLED="false"
     fi
 
-    # Cloud provider note
     echo ""
-    echo -e "${DIM}Note: If running on a cloud provider (AWS, GCP, Azure, etc.),${NC}"
-    echo -e "${DIM}also configure the security group/firewall rules in your provider's console.${NC}"
+    read -p "Enable auto-updates? (y/N): " autoupdate
+    if [[ "$autoupdate" =~ ^[Yy]$ ]]; then
+        AUTOUPDATE_ENABLED="true"
+        install_autoupdater
+        log_success "Auto-updates enabled"
+    else
+        AUTOUPDATE_ENABLED="false"
+    fi
+
+    save_settings
 }
 
-# ═══════════════════════════════════════════════════════════════
-# Completion
-# ═══════════════════════════════════════════════════════════════
-
 print_completion() {
-    IDENTITY_PUBKEY=$(solana-keygen pubkey "$CONFIG_DIR/identity.json")
-    VOTE_PUBKEY=$(solana-keygen pubkey "$CONFIG_DIR/vote.json")
-
     clear
     echo ""
     echo -e "${GREEN}${BOLD}╔═══════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${GREEN}${BOLD}║                                                               ║${NC}"
     echo -e "${GREEN}${BOLD}║   X1-Forge Installation Complete!                             ║${NC}"
-    echo -e "${GREEN}${BOLD}║                                                               ║${NC}"
     echo -e "${GREEN}${BOLD}╚═══════════════════════════════════════════════════════════════╝${NC}"
     echo ""
-    echo -e "${BOLD}Your Validator:${NC}"
-    echo "  Identity:     $IDENTITY_PUBKEY"
-    echo "  Vote Account: $VOTE_PUBKEY"
+    echo "Identity: $(solana-keygen pubkey $CONFIG_DIR/identity.json)"
+    echo "Vote: $(solana-keygen pubkey $CONFIG_DIR/vote.json)"
     echo ""
-    echo -e "${BOLD}Start your validator:${NC}"
-    echo "  sudo systemctl start x1-forge"
+    echo -e "${BOLD}Commands:${NC}"
+    echo "  x1-forge start      - Start validator"
+    echo "  x1-forge stop       - Stop validator"
+    echo "  x1-forge logs       - View logs"
+    echo "  x1-forge-config     - Configuration menu"
     echo ""
-    echo -e "${BOLD}Monitor:${NC}"
-    echo "  x1-forge logs      - Watch logs"
-    echo "  x1-forge catchup   - Sync progress"
-    echo "  x1-forge status    - Service status"
-    echo ""
-    echo -e "${YELLOW}Initial sync takes several hours. Your validator will start${NC}"
-    echo -e "${YELLOW}voting automatically once caught up with the network.${NC}"
+    echo -e "${YELLOW}Start with: sudo systemctl start x1-forge${NC}"
     echo ""
 }
 
@@ -767,13 +1156,18 @@ print_completion() {
 # ═══════════════════════════════════════════════════════════════
 
 main() {
+    # Check for config mode
+    if [[ "$1" == "--config" ]] || [[ "$1" == "config" ]]; then
+        show_config_menu
+        exit 0
+    fi
+
     print_banner
     print_overview
 
     read -p "Ready to begin? (Y/n): " -n 1 -r
     echo
     if [[ $REPLY =~ ^[Nn]$ ]]; then
-        echo "Installation cancelled."
         exit 0
     fi
 
@@ -782,8 +1176,10 @@ main() {
     setup_wallets
     fund_identity
     create_vote_account
+    setup_validator_identity
     build_and_install
     configure_firewall
+    setup_service
     print_completion
 }
 
