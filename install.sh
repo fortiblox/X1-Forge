@@ -814,6 +814,23 @@ install_dependencies() {
     solana config set --url $RPC_URL -q
 }
 
+backup_wallet() {
+    local wallet_file="$1"
+    local wallet_name="$2"
+
+    if [[ -f "$wallet_file" ]]; then
+        local backup_dir="$CONFIG_DIR/backups"
+        local timestamp=$(date +%Y-%m-%d_%H-%M-%S)
+        local backup_file="$backup_dir/${wallet_name}_${timestamp}.json"
+
+        mkdir -p "$backup_dir"
+        cp "$wallet_file" "$backup_file"
+        chmod 600 "$backup_file"
+
+        log_success "Backed up $wallet_name to: $backup_file"
+    fi
+}
+
 setup_wallets() {
     log_step "3/9" "Wallet Setup"
 
@@ -827,29 +844,47 @@ setup_wallets() {
     echo ""
 
     if [[ -f "$IDENTITY_PATH" ]] || [[ -f "$VOTE_PATH" ]]; then
-        echo -e "${YELLOW}Existing keypairs found:${NC}"
-        [[ -f "$IDENTITY_PATH" ]] && echo "  Identity: $(solana-keygen pubkey $IDENTITY_PATH 2>/dev/null)"
-        [[ -f "$VOTE_PATH" ]] && echo "  Vote: $(solana-keygen pubkey $VOTE_PATH 2>/dev/null)"
+        echo -e "${RED}╔═══════════════════════════════════════════════════════════════╗${NC}"
+        echo -e "${RED}║  WARNING: EXISTING WALLETS FOUND                              ║${NC}"
+        echo -e "${RED}╚═══════════════════════════════════════════════════════════════╝${NC}"
         echo ""
+        [[ -f "$IDENTITY_PATH" ]] && echo -e "  Identity: ${CYAN}$(solana-keygen pubkey $IDENTITY_PATH 2>/dev/null)${NC}"
+        [[ -f "$VOTE_PATH" ]] && echo -e "  Vote:     ${CYAN}$(solana-keygen pubkey $VOTE_PATH 2>/dev/null)${NC}"
+        echo ""
+        echo -e "${YELLOW}If you overwrite these wallets without a backup, they will be${NC}"
+        echo -e "${YELLOW}LOST FOREVER. We cannot recover them for you.${NC}"
+        echo ""
+        echo "  1) ${YELLOW}Keep existing keypairs (recommended)${NC}"
+        echo "  2) ${GREEN}Create NEW keypairs (will backup existing)${NC}"
+        echo "  3) ${CYAN}Import keypairs (will backup existing)${NC}"
+        echo ""
+        read -p "Select [1-3]: " wallet_choice
+
+        case $wallet_choice in
+            1)
+                if [[ ! -f "$IDENTITY_PATH" ]] || [[ ! -f "$VOTE_PATH" ]]; then
+                    log_error "Both keypairs required"
+                    setup_wallets
+                    return
+                fi
+                log_success "Keeping existing keypairs"
+                ;;
+            2) create_new_wallets ;;
+            3) import_existing_wallets ;;
+        esac
+    else
+        echo "No existing keypairs found."
+        echo ""
+        echo "  1) ${GREEN}Create NEW keypairs${NC}"
+        echo "  2) ${CYAN}Import EXISTING keypairs${NC}"
+        echo ""
+        read -p "Select [1-2]: " wallet_choice
+
+        case $wallet_choice in
+            1) create_new_wallets ;;
+            2) import_existing_wallets ;;
+        esac
     fi
-
-    echo "  1) ${GREEN}Create NEW keypairs${NC}"
-    echo "  2) ${CYAN}Import EXISTING keypairs${NC}"
-    echo "  3) ${YELLOW}Keep existing keypairs${NC}"
-    echo ""
-    read -p "Select [1-3]: " wallet_choice
-
-    case $wallet_choice in
-        1) create_new_wallets ;;
-        2) import_existing_wallets ;;
-        3)
-            if [[ ! -f "$IDENTITY_PATH" ]] || [[ ! -f "$VOTE_PATH" ]]; then
-                log_error "Keypairs not found"
-                setup_wallets
-                return
-            fi
-            ;;
-    esac
 
     IDENTITY_PUBKEY=$(solana-keygen pubkey "$IDENTITY_PATH")
     VOTE_PUBKEY=$(solana-keygen pubkey "$VOTE_PATH")
@@ -860,10 +895,24 @@ setup_wallets() {
     echo -e "${RED}${BOLD}║  $IDENTITY_PATH${NC}"
     echo -e "${RED}${BOLD}║  $VOTE_PATH${NC}"
     echo -e "${RED}${BOLD}╚═══════════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    if [[ -d "$CONFIG_DIR/backups" ]]; then
+        echo -e "${DIM}Previous backups stored in: $CONFIG_DIR/backups/${NC}"
+    fi
     read -p "Press Enter after backing up..."
 }
 
 create_new_wallets() {
+    # Backup existing wallets before overwriting
+    if [[ -f "$CONFIG_DIR/identity.json" ]]; then
+        log_info "Backing up existing identity..."
+        backup_wallet "$CONFIG_DIR/identity.json" "identity"
+    fi
+    if [[ -f "$CONFIG_DIR/vote.json" ]]; then
+        log_info "Backing up existing vote account..."
+        backup_wallet "$CONFIG_DIR/vote.json" "vote"
+    fi
+
     solana-keygen new -o "$CONFIG_DIR/identity.json" --no-passphrase --force -q
     chmod 600 "$CONFIG_DIR/identity.json"
     log_success "Identity created"
@@ -874,6 +923,16 @@ create_new_wallets() {
 }
 
 import_existing_wallets() {
+    # Backup existing wallets before overwriting
+    if [[ -f "$CONFIG_DIR/identity.json" ]]; then
+        log_info "Backing up existing identity..."
+        backup_wallet "$CONFIG_DIR/identity.json" "identity"
+    fi
+    if [[ -f "$CONFIG_DIR/vote.json" ]]; then
+        log_info "Backing up existing vote account..."
+        backup_wallet "$CONFIG_DIR/vote.json" "vote"
+    fi
+
     echo ""
     echo "  1) Import from file paths"
     echo "  2) Paste private key bytes"
