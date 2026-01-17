@@ -695,9 +695,9 @@ check_requirements() {
         echo -e "${RED}${BOLD}System does not meet minimum requirements ($errors issue(s))${NC}"
         echo ""
         echo -e "${YELLOW}Proceeding may result in poor performance, crashes, or inability to keep up with the network.${NC}"
-        read -p "Continue anyway? (y/N): " -n 1 -r
-        echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        read -t 0.1 -n 10000 discard 2>/dev/null || true  # Clear input buffer
+        read -p "Continue anyway? (y/N): " override_choice
+        if [[ ! "$override_choice" =~ ^[Yy] ]]; then
             exit 1
         fi
         echo -e "${YELLOW}Proceeding with installation...${NC}"
