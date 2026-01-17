@@ -35,8 +35,6 @@ ENTRYPOINTS=(
     "entrypoint0.mainnet.x1.xyz:8001"
     "entrypoint1.mainnet.x1.xyz:8001"
     "entrypoint2.mainnet.x1.xyz:8001"
-    "entrypoint3.mainnet.x1.xyz:8001"
-    "entrypoint4.mainnet.x1.xyz:8001"
 )
 KNOWN_VALIDATORS=(
     "7ufaUVtQKzGu5tpFtii9Cg8kR4jcpjQSXwsF3oVPSMZA"
@@ -410,9 +408,7 @@ max_incremental_snapshots = $MAX_INC_SNAPSHOTS
 endpoints = [
     "entrypoint0.mainnet.x1.xyz:8001",
     "entrypoint1.mainnet.x1.xyz:8001",
-    "entrypoint2.mainnet.x1.xyz:8001",
-    "entrypoint3.mainnet.x1.xyz:8001",
-    "entrypoint4.mainnet.x1.xyz:8001"
+    "entrypoint2.mainnet.x1.xyz:8001"
 ]
 
 [known_validators]
@@ -466,8 +462,6 @@ ExecStart=$INSTALL_DIR/bin/x1-forge-validator \\
     --entrypoint entrypoint0.mainnet.x1.xyz:8001 \\
     --entrypoint entrypoint1.mainnet.x1.xyz:8001 \\
     --entrypoint entrypoint2.mainnet.x1.xyz:8001 \\
-    --entrypoint entrypoint3.mainnet.x1.xyz:8001 \\
-    --entrypoint entrypoint4.mainnet.x1.xyz:8001 \\
     --known-validator 7ufaUVtQKzGu5tpFtii9Cg8kR4jcpjQSXwsF3oVPSMZA \\
     --known-validator 5Rzytnub9yGTFHqSmauFLsAbdXFbehMwPBLiuEgKajUN \\
     --known-validator 4V2QkkWce8bwTzvvwPiNRNQ4W433ZsGQi9aWU12Q8uBF \\
