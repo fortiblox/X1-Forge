@@ -1162,6 +1162,9 @@ main() {
         exit 0
     fi
 
+    # Ensure we can read from terminal even when piped
+    exec < /dev/tty
+
     print_banner
     print_overview
 
