@@ -1135,9 +1135,12 @@ CONFIG
 }
 
 apply_kernel_tuning() {
+    log_info "Applying kernel tuning..."
     sudo tee /etc/sysctl.d/99-x1-forge.conf > /dev/null << 'EOF'
 net.core.rmem_max=134217728
 net.core.wmem_max=134217728
+net.core.rmem_default=134217728
+net.core.wmem_default=134217728
 vm.max_map_count=2000000
 vm.swappiness=10
 fs.file-max=2097152
@@ -1148,6 +1151,7 @@ EOF
 $USER soft nofile 1000000
 $USER hard nofile 1000000
 EOF
+    log_success "Kernel tuning applied"
 }
 
 configure_firewall() {
